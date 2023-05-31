@@ -33,47 +33,6 @@ namespace Microsoft.EntityFrameworkCore
             return dbSet.Update(entity);
         }
 
-        public static int MergeByIdAndSave<T>(this DbContext dbContext, T entity)
-            where T : class, new()
-        {
-            var merge = MergeByIdAndSaveAsync(dbContext, entity);
-            merge.Wait();
-            return merge.Result;
-        }
-
-        public static async Task<int> MergeByIdAndSaveAsync<T>(this DbContext dbContext, T entity,
-            CancellationToken cancellationToken = default)
-            where T : class, new()
-        {
-            var entityType = dbContext.Model.FindEntityType(typeof(T));
-            var tableName = entityType.Relational().TableName;
-            var key = entityType.FindPrimaryKey().Properties;
-            var properties = entityType.GetProperties().ToList();
-            var propertyIndex = 0;
-
-            var condition = string.Join(" AND ", key.Select(x => $"[Target].[{x.Name}] = [Source].[{x.Name}]"));
-            var parameters = string.Join(", ", properties.Select(x => $"@p{propertyIndex++}"));
-            var columns = string.Join(", ", properties.Select(x => $"[{x.Name}]"));
-            var update = string.Join(", ", properties.Select(x => $"[{x.Name}] = [Source].[{x.Name}]"));
-            var values = string.Join(", ", properties.Select(x => $"[Source].[{x.Name}]"));
-            var sql = $@"
-MERGE [{tableName}] AS [Target]
-USING (SELECT {parameters}) AS [Source] ({columns})
-ON {condition}
-WHEN MATCHED THEN
-	UPDATE SET {update}
-WHEN NOT MATCHED THEN
-	INSERT ({columns})
-	VALUES ({values})
-;";
-
-            var parameterValues = properties.Select(x => x.PropertyInfo.GetValue(entity));
-
-#pragma warning disable EF1000 // Possible SQL injection vulnerability.
-            return await dbContext.Database.ExecuteSqlCommandAsync(sql, parameterValues, cancellationToken);
-#pragma warning restore EF1000 // Possible SQL injection vulnerability.
-        }
-
         public static IEnumerable<Type> GetClrTypes(this DbContext dbContext)
         {
             return dbContext.Model
